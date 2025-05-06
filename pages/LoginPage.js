@@ -1,17 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { View, TextInput, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
-import { supabase } from '../supabaseClient'; // Ensure you import your Supabase client
-import tw from 'twrnc'; // Assuming you're using Tailwind CSS for styling
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation
-import { FontAwesome } from '@expo/vector-icons'; // Import FontAwesome icons
+import { loginFarmer } from '../supabaseClient'; // Import the custom login function
+import tw from 'twrnc';
+import { useNavigation } from '@react-navigation/native';
+import { FontAwesome } from '@expo/vector-icons';
 
 const LoginScreen = () => {
-  const navigation = useNavigation(); // Get the navigation object
-  const [mobileNumber, setMobileNumber] = useState('');  // Store mobile number input
-  const [pin, setPin] = useState(['', '', '', '']);  // Store each digit of the PIN
+  const navigation = useNavigation();
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [pin, setPin] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [notification, setNotification] = useState('');  // Display notification message
-  const [showPassword, setShowPassword] = useState(false); // Toggle for password visibility
+  const [notification, setNotification] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   // Create refs for each PIN input
   const pinRefs = useRef(pin.map(() => React.createRef()));
@@ -32,24 +32,23 @@ const LoginScreen = () => {
 
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('farmers')
-      .select('*')
-      .eq('mobile_number', mobileNumber)
-      .single();
-
-    setLoading(false);
-
-    if (error || !data) {
-      setNotification('Mobile number not found.');
-    } else if (data.password === pinString) {
-      setNotification('Login successful!');
-      setMobileNumber('');
-      setPin(['', '', '', '']);
-      setNotification('');
-      navigation.navigate('Home');
-    } else {
-      setNotification('Incorrect PIN. Please try again.');
+    try {
+      // Use the custom login function from supabaseClient
+      const result = await loginFarmer(mobileNumber, pinString);
+      
+      if (result.success) {
+        setNotification('Login successful!');
+        setMobileNumber('');
+        setPin(['', '', '', '']);
+        navigation.navigate('Home');
+      } else {
+        setNotification(result.message || 'Login failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setNotification('An error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
