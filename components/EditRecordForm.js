@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -9,36 +9,38 @@ import {
 } from 'react-native';
 import tw from 'twrnc';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import Popup from './PopUp';
-import { useNavigation } from '@react-navigation/native';
+import Popup from '../charts/PopUp';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import translations from '../assets/translation.json';
 import { user } from '../data/userData';
-import { supabase } from '../supabaseClient'; // Import Supabase client
+import { supabase } from '../supabaseClient';
 
-// Define available resource types and icons
+// Define available resource types and icons - same as AddForm
 const resourceTypes = [
-  { name: 'Crop', icon: 'sprout' }, // Sprout icon for Crop
-  { name: 'Vehicle', icon: 'tractor' }, // Tractor icon for Vehicle
-  { name: 'Cattle', icon: 'cow' }, // Cow icon for Cattle
+  { name: 'Crop', icon: 'sprout' },
+  { name: 'Vehicle', icon: 'tractor' },
+  { name: 'Cattle', icon: 'cow' },
 ];
 
-const AddForm = () => {
+const EditRecordForm = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const { record } = route.params;
   const lang = user.language;
 
   // State management
-  const [selectedResourceType, setSelectedResourceType] = useState(resourceTypes[0].name);
-  const [resourceName, setResourceName] = useState('');
-  const [resourceSize, setResourceSize] = useState('');
-  const [resourceDescription, setResourceDescription] = useState('');
-  const [startDate, setStartDate] = useState(new Date());
+  const [selectedResourceType, setSelectedResourceType] = useState(record.resource_type);
+  const [resourceName, setResourceName] = useState(record.resource_name);
+  const [resourceSize, setResourceSize] = useState(record.resource_size.toString());
+  const [resourceDescription, setResourceDescription] = useState(record.resource_description);
+  const [startDate, setStartDate] = useState(new Date(record.start_date));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [popupVisible, setPopupVisible] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
+  const handleUpdate = async () => {
     // Validate input
     if (!resourceName || !resourceSize || !resourceDescription || !startDate) {
       setPopupMessage(translations.addResource.fillFieldsMessage[lang]);
@@ -50,7 +52,7 @@ const AddForm = () => {
     setSaving(true);
 
     // Prepare data for Supabase
-    const newRecord = {
+    const updatedRecord = {
       resource_type: selectedResourceType,
       resource_name: resourceName,
       resource_size: parseFloat(resourceSize),
@@ -58,18 +60,19 @@ const AddForm = () => {
       start_date: startDate.toISOString().split('T')[0], // Format date as YYYY-MM-DD
     };
 
-    // Save to Supabase
+    // Update record in Supabase
     const { data, error } = await supabase
       .from('agricultural_records')
-      .insert(newRecord);
+      .update(updatedRecord)
+      .eq('id', record.id);
 
     setSaving(false);
 
     if (error) {
-      console.error('Error saving record:', error);
-      setPopupMessage(translations.addResource.errorMessage?.[lang] || 'Error saving record. Please try again.');
+      console.error('Error updating record:', error);
+      setPopupMessage(translations.editRecord?.errorMessage?.[lang] || 'Error updating record. Please try again.');
     } else {
-      setPopupMessage(translations.addResource.successMessage[lang]);
+      setPopupMessage(translations.editRecord?.successMessage?.[lang] || 'Record updated successfully!');
     }
     
     setPopupVisible(true);
@@ -84,7 +87,7 @@ const AddForm = () => {
     <ScrollView contentContainerStyle={tw`flex-grow justify-center`}>
       <View style={tw`p-4 bg-white rounded-lg shadow-md mx-4 my-8`}>
         <Text style={tw`text-xl font-bold mb-4 text-center`}>
-          {translations.addResource.title[lang]}
+          {translations.editRecord?.title?.[lang] || 'Edit Record'}
         </Text>
 
         {/* Horizontal ScrollView for selecting resource type */}
@@ -165,18 +168,20 @@ const AddForm = () => {
           />
         )}
 
-        {/* Save and Cancel Buttons */}
+        {/* Update and Cancel Buttons */}
         <View style={tw`flex-row justify-around mt-4`}>
           <TouchableOpacity
             style={tw`border border-green-500 bg-white py-2 px-4 rounded-full flex-row items-center`}
-            onPress={handleSave}
+            onPress={handleUpdate}
             disabled={saving}>
             {saving ? (
               <ActivityIndicator size="small" color="#22c55e" style={tw`mr-2`} />
             ) : (
               <MaterialCommunityIcons name="content-save" size={18} color="#22c55e" style={tw`mr-2`} />
             )}
-            <Text style={tw`text-black font-bold`}>{translations.addResource.save[lang]}</Text>
+            <Text style={tw`text-black font-bold`}>
+              {translations.editRecord?.update?.[lang] || 'Update'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -194,8 +199,8 @@ const AddForm = () => {
           message={popupMessage}
           onClose={() => {
             setPopupVisible(false);
-            if (popupMessage === translations.addResource.successMessage[lang]) {
-              navigation.goBack(); // Navigate only when saving is successful
+            if (popupMessage === (translations.editRecord?.successMessage?.[lang] || 'Record updated successfully!')) {
+              navigation.goBack(); // Navigate only when update is successful
             }
           }}
         />
@@ -204,4 +209,4 @@ const AddForm = () => {
   );
 };
 
-export default AddForm;
+export default EditRecordForm;

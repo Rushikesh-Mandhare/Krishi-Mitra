@@ -18,30 +18,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Custom function to handle farmer login - Fixed implementation
 export const loginFarmer = async (mobileNumber, password) => {
   try {
-    // First, call the login_farmer RPC function we've defined in Supabase
     const { data: rpcData, error: rpcError } = await supabase
-      .rpc('login_farmer', { 
-        p_mobile_number: mobileNumber, 
-        p_password: password 
+      .rpc('login_farmer', {
+        p_mobile_number: mobileNumber,
+        p_password: password,
       });
-    
+
     if (rpcError) {
       console.error('RPC error:', rpcError);
       return { success: false, message: 'Login failed. Please try again.' };
     }
 
-    if (!rpcData.success) {
-      return { success: false, message: rpcData.message };
+    if (!rpcData?.success) {
+      return { success: false, message: rpcData?.message || 'Login failed' };
     }
-    
-    // If login is successful via RPC, store the farmer info
+
+    // Store the farmer data in AsyncStorage
     await AsyncStorage.setItem('farmer', JSON.stringify(rpcData.farmer));
-    
-    // Return success with farmer data
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: 'Login successful',
-      farmer: rpcData.farmer
+      farmer: rpcData.farmer,
     };
   } catch (error) {
     console.error('Error logging in:', error.message);
@@ -50,36 +48,39 @@ export const loginFarmer = async (mobileNumber, password) => {
 };
 
 // Custom function to handle farmer signup - Updated implementation
-export const signupFarmer = async (name, mobileNumber, password, latitude, longitude) => {
+export const signupFarmer = async (
+  name,
+  mobileNumber,
+  password,
+  latitude,
+  longitude
+) => {
   try {
-    // Check if mobile number already exists - using RPC for security
     const { data: checkResult, error: checkError } = await supabase
       .rpc('check_mobile_exists', { p_mobile_number: mobileNumber });
-    
+
     if (checkError) {
       console.error('Check mobile error:', checkError);
       return { success: false, message: 'Error checking mobile number' };
     }
-    
+
     if (checkResult) {
       return { success: false, message: 'Mobile number already registered' };
     }
-    
-    // Insert new farmer using RPC for better security
-    const { data, error } = await supabase
-      .rpc('create_farmer', {
-        p_name: name,
-        p_mobile_number: mobileNumber,
-        p_password: password,
-        p_latitude: latitude,
-        p_longitude: longitude
-      });
-    
+
+    const { data, error } = await supabase.rpc('create_farmer', {
+      p_name: name,
+      p_mobile_number: mobileNumber,
+      p_password: password,
+      p_latitude: latitude,
+      p_longitude: longitude,
+    });
+
     if (error) {
       console.error('Signup error:', error);
       return { success: false, message: 'Failed to create account' };
     }
-    
+
     return { success: true, message: 'Signup successful' };
   } catch (error) {
     console.error('Error signing up:', error.message);
@@ -92,7 +93,7 @@ export const getCurrentFarmer = async () => {
   try {
     const farmerString = await AsyncStorage.getItem('farmer');
     if (!farmerString) return null;
-    
+
     return JSON.parse(farmerString);
   } catch (error) {
     console.error('Error getting current farmer:', error.message);
@@ -108,5 +109,22 @@ export const logoutFarmer = async () => {
   } catch (error) {
     console.error('Error logging out:', error.message);
     return { success: false, message: 'Failed to log out' };
+  }
+};
+
+// FIXED: Get farmer ID directly from AsyncStorage instead of Supabase Auth
+export const getCurrentFarmerId = async () => {
+  try {
+    const farmer = await getCurrentFarmer();
+    if (!farmer) {
+      console.log('No farmer found in AsyncStorage');
+      return null;
+    }
+    
+    console.log('Successfully retrieved farmer ID from AsyncStorage:', farmer.id);
+    return farmer.id;
+  } catch (error) {
+    console.error('Error getting farmer ID:', error.message);
+    return null;
   }
 };

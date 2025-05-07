@@ -4,7 +4,10 @@ import LoginScreen from './pages/LoginPage';
 import HomeScreen from './pages/HomePage';
 import AppIntro from './pages/Appintro';
 import AddForm from './charts/AddForm';
+import ExpenseForm from './charts/ExpenseForm';
 import SignupPage from './pages/SignupPage';
+import EditRecordForm from './components/EditRecordForm';
+import EditTransactionForm from './components/EditTransactionForm';
 
 const Stack = createNativeStackNavigator();
 
@@ -36,65 +39,35 @@ export default function App() {
           component={AddForm}
           options={{ headerShown: false }} // Hide header for add form
         />
+        <Stack.Screen
+          name="ExpenseForm"
+          component={ExpenseForm}
+          options={{ headerShown: false }} // Hide header for add form
+        />
         {/* SignupPage Screen */}
         <Stack.Screen
           name="Signup"
           component={SignupPage} 
           options={{ headerShown: false }} // Hide header for signup
         />
+
+        <Stack.Screen
+          name="EditRecord"
+          component={EditRecordForm} 
+          options={{ headerShown: false }} 
+        />
+
+        <Stack.Screen
+          name="EditTransaction"
+          component={EditTransactionForm} 
+          options={{ headerShown: false }} 
+        />
+
+
+
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
-// import { NavigationContainer } from '@react-navigation/native';
-// import { createNativeStackNavigator } from '@react-navigation/native-stack';
-// import LoginScreen from './pages/LoginPage';
-// import HomeScreen from './pages/HomePage';
-// import AppIntro from './pages/Appintro';
-// import AddForm from './charts/AddForm';
-// import SignupPage from './pages/SignupPage';
-// import { LanguageProvider } from './LanguageContext';
 
-// const Stack = createNativeStackNavigator();
-
-// export default function App() {
-//   return (
-//     <LanguageProvider>
-//     <NavigationContainer>
-//       <Stack.Navigator initialRouteName="AppIntro">
-//         {/* AppIntro Screen */}
-//         <Stack.Screen
-//           name="AppIntro"
-//           component={AppIntro}
-//           options={{ headerShown: false }} // Hide header for intro
-//         />
-//         {/* Login Screen - commented out */}
-//         {/* <Stack.Screen
-//           name="Login"
-//           component={LoginScreen}
-//           options={{ headerShown: false }} // Hide header for login
-//         /> */}
-//         {/* Home Screen */}
-//         <Stack.Screen
-//           name="Home"
-//           component={HomeScreen}
-//           options={{ headerShown: false }} // Hide header for home
-//         />
-//         {/* AddForm Screen */}
-//         <Stack.Screen
-//           name="AddForm"
-//           component={AddForm}
-//           options={{ headerShown: false }} // Hide header for add form
-//         />
-//         {/* SignupPage Screen - commented out */}
-//         {/* <Stack.Screen
-//           name="Signup"
-//           component={SignupPage} 
-//           options={{ headerShown: false }} // Hide header for signup
-//         /> */}
-//       </Stack.Navigator>
-//     </NavigationContainer>
-//     </LanguageProvider>
-//   );
-// }

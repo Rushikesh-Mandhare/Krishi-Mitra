@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, ScrollView, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, FlatList, ScrollView, RefreshControl, Alert, Modal } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import PieChartComponent from '../charts/piechart';
-import useTransactions from '../data/transactionData';
+import useTransactions, { deleteTransaction } from '../data/transactionData';
 import tw from 'twrnc';
 
 const Records = () => {
@@ -11,6 +11,21 @@ const Records = () => {
   const { transactions, loading, summary, pieChartData, categoryChartData, refresh } = useTransactions();
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'expenses', 'income'
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [actionModalVisible, setActionModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [])
+  );
+
+  // Also refresh data when component mounts
+  useEffect(() => {
+    refresh();
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -18,9 +33,9 @@ const Records = () => {
     setRefreshing(false);
   };
 
-  // Format currency to Indian Rupees
+  // Format currency to Indian Rupees with proper spacing
   const formatCurrency = (amount) => {
-    return '₹' + amount.toLocaleString('en-IN');
+    return '₹ ' + amount.toLocaleString('en-IN');
   };
 
   // Format date to local string
@@ -41,10 +56,75 @@ const Records = () => {
     return true;
   });
 
+  // Handle transaction item press
+  const handleTransactionPress = (transaction) => {
+    setSelectedTransaction(transaction);
+    setActionModalVisible(true);
+  };
+
+  // Handle edit transaction
+  const handleEditTransaction = () => {
+    setActionModalVisible(false);
+    navigation.navigate('EditTransaction', { transaction: selectedTransaction });
+  };
+
+  // Handle delete transaction - FIXED
+  // const handleDeleteTransaction = async () => {
+  //   Alert.alert(
+  //     'Delete Transaction',
+  //     'Are you sure you want to delete this transaction?',
+  //     [
+  //       {
+  //         text: 'Cancel',
+  //         style: 'cancel',
+  //         onPress: () => setActionModalVisible(false)
+  //       },
+  //       {
+  //         text: 'Delete',
+  //         style: 'destructive',
+  //         onPress: async () => {
+  //           if (!selectedTransaction || !selectedTransaction.id) {
+  //             Alert.alert('Error', 'Cannot delete: Transaction ID is missing');
+  //             setActionModalVisible(false);
+  //             return;
+  //           }
+
+  //           setIsDeleting(true);
+  //           setActionModalVisible(false);
+            
+  //           try {
+  //             console.log('Attempting to delete transaction with ID:', selectedTransaction.id);
+  //             const result = await deleteTransaction(selectedTransaction.id);
+              
+  //             console.log('Delete transaction result:', result);
+              
+  //             if (result && result.success) {
+  //               // Explicitly wait for the refresh to complete
+  //               await refresh();
+  //               Alert.alert('Success', 'Transaction deleted successfully');
+  //             } else {
+  //               Alert.alert('Error', `Failed to delete: ${result?.error || 'Unknown error'}`);
+  //             }
+  //           } catch (error) {
+  //             console.error('Error in handleDeleteTransaction:', error);
+  //             Alert.alert('Error', `An unexpected error occurred: ${error.message}`);
+  //           } finally {
+  //             setIsDeleting(false);
+  //             setSelectedTransaction(null);
+  //           }
+  //         }
+  //       }
+  //     ]
+  //   );
+  // };
+
   // Transaction item component
   const TransactionItem = ({ item }) => (
-    <View style={tw`flex-row justify-between items-center p-4 border-b border-gray-200`}>
-      <View style={tw`flex-row items-center`}>
+    <TouchableOpacity 
+      style={tw`flex-row justify-between items-center p-4 border-b border-gray-200`}
+      onPress={() => handleTransactionPress(item)}
+    >
+      <View style={tw`flex-row items-center flex-1 mr-2`}>
         <View 
           style={tw`w-10 h-10 rounded-full ${item.type === 'expense' ? 'bg-red-100' : 'bg-green-100'} items-center justify-center mr-3`}
         >
@@ -65,12 +145,12 @@ const Records = () => {
         </View>
       </View>
       <Text 
-        style={tw`font-bold text-base ${item.type === 'expense' ? 'text-red-500' : 'text-green-500'}`}
+        style={tw`font-bold text-base ${item.type === 'expense' ? 'text-red-500' : 'text-green-500'} text-right`}
       >
         {item.type === 'expense' ? '- ' : '+ '}
         {formatCurrency(item.amount)}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -79,7 +159,7 @@ const Records = () => {
       <ScrollView 
         style={tw`flex-1`}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing || isDeleting} onRefresh={onRefresh} />
         }
       >
         <View style={tw`flex-row justify-between items-center p-4`}>
@@ -92,23 +172,31 @@ const Records = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Summary Cards */}
-        <View style={tw`flex-row justify-between px-4 mb-4`}>
-          <View style={tw`bg-white rounded-lg p-4 shadow w-30 flex-1 mr-2`}>
-            <Text style={tw`text-sm text-gray-500`}>Income</Text>
-            <Text style={tw`text-lg font-bold text-green-500`}>{formatCurrency(summary.totalIncome)}</Text>
+        {/* Summary Cards - Improved to show full amounts */}
+        <View style={tw`px-4 mb-4`}>
+          <View style={tw`flex-row justify-between mb-2`}>
+            <View style={tw`bg-white rounded-lg p-4 shadow w-full`}>
+              <Text style={tw`text-sm text-gray-500 mb-1`}>Income</Text>
+              <Text style={tw`text-xl font-bold text-green-500`}>
+                {formatCurrency(summary.totalIncome)}
+              </Text>
+            </View>
           </View>
-          <View style={tw`bg-white rounded-lg p-4 shadow w-30 flex-1 mx-2`}>
-            <Text style={tw`text-sm text-gray-500`}>Expenses</Text>
-            <Text style={tw`text-lg font-bold text-red-500`}>{formatCurrency(summary.totalExpense)}</Text>
+          <View style={tw`flex-row justify-between mb-2`}>
+            <View style={tw`bg-white rounded-lg p-4 shadow w-full`}>
+              <Text style={tw`text-sm text-gray-500 mb-1`}>Expenses</Text>
+              <Text style={tw`text-xl font-bold text-red-500`}>
+                {formatCurrency(summary.totalExpense)}
+              </Text>
+            </View>
           </View>
-          <View style={tw`bg-white rounded-lg p-4 shadow w-30 flex-1 ml-2`}>
-            <Text style={tw`text-sm text-gray-500`}>Balance</Text>
-            <Text 
-              style={tw`text-lg font-bold ${summary.balance >= 0 ? 'text-blue-500' : 'text-orange-500'}`}
-            >
-              {formatCurrency(summary.balance)}
-            </Text>
+          <View style={tw`flex-row justify-between`}>
+            <View style={tw`bg-white rounded-lg p-4 shadow w-full`}>
+              <Text style={tw`text-sm text-gray-500 mb-1`}>Balance</Text>
+              <Text style={tw`text-xl font-bold ${summary.balance >= 0 ? 'text-blue-500' : 'text-orange-500'}`}>
+                {formatCurrency(summary.balance)}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -160,7 +248,7 @@ const Records = () => {
               <FlatList
                 data={filteredTransactions}
                 renderItem={({ item }) => <TransactionItem item={item} />}
-                keyExtractor={item => item.id}
+                keyExtractor={item => item.id.toString()} // Ensure ID is converted to string
                 scrollEnabled={true}
               />
             ) : (
@@ -171,6 +259,43 @@ const Records = () => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Action Modal for Edit/Delete */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={actionModalVisible}
+        onRequestClose={() => {
+          setActionModalVisible(false);
+        }}
+      >
+        <TouchableOpacity
+          style={tw`flex-1 justify-end bg-black bg-opacity-50`}
+          activeOpacity={1}
+          onPress={() => setActionModalVisible(false)}
+        >
+          <View style={tw`bg-white rounded-t-xl p-4`}>
+            <Text style={tw`text-xl font-bold mb-4 text-center`}>Transaction Options</Text>
+            
+            <TouchableOpacity 
+              style={tw`flex-row items-center p-4 border-b border-gray-200`}
+              onPress={handleEditTransaction}
+            >
+              <MaterialCommunityIcons name="pencil" size={24} color="#2196F3" style={tw`mr-3`} />
+              <Text style={tw`text-lg`}>Edit Transaction</Text>
+            </TouchableOpacity>
+            
+          
+            
+            <TouchableOpacity 
+              style={tw`bg-gray-200 rounded-lg p-3 mt-2`}
+              onPress={() => setActionModalVisible(false)}
+            >
+              <Text style={tw`text-center font-medium`}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };

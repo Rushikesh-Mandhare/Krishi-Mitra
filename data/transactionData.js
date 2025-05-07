@@ -1,205 +1,235 @@
 // transactionData.js
 import { useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../supabaseClient';
 
-// Sample initial transactions data
-const initialTransactions = [
-  {
-    id: '1',
-    type: 'expense',
-    amount: 2000,
-    category: 'seeds',
-    description: 'Winter wheat seeds',
-    date: new Date('2025-05-01'),
-  },
-  {
-    id: '2',
-    type: 'expense',
-    amount: 3500,
-    category: 'fertilizer',
-    description: 'Organic fertilizer',
-    date: new Date('2025-05-02'),
-  },
-  {
-    id: '3',
-    type: 'income',
-    amount: 10000,
-    category: 'crop_sale',
-    description: 'Sold rice harvest',
-    date: new Date('2025-05-03'),
-  },
-  {
-    id: '4',
-    type: 'expense',
-    amount: 1500,
-    category: 'labor',
-    description: 'Hired help for planting',
-    date: new Date('2025-05-04'),
-  },
-];
-
-// Key for storing data in AsyncStorage
-const TRANSACTIONS_STORAGE_KEY = 'farmer_transactions';
-
-// Initialize transactions with sample data if storage is empty
-const initializeTransactions = async () => {
-  try {
-    const storedTransactions = await AsyncStorage.getItem(TRANSACTIONS_STORAGE_KEY);
-    if (!storedTransactions) {
-      await AsyncStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(initialTransactions));
-      return initialTransactions;
-    }
-    return JSON.parse(storedTransactions);
-  } catch (error) {
-    console.error('Error initializing transactions:', error);
-    return initialTransactions;
-  }
-};
-
-// Add a new transaction
+// Individual transaction functions
 export const addTransaction = async (transaction) => {
   try {
-    const currentTransactions = await getTransactions();
-    const updatedTransactions = [transaction, ...currentTransactions];
-    await AsyncStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(updatedTransactions));
-    return updatedTransactions;
+    console.log('Adding transaction with data:', {
+      amount: transaction.amount,
+      category: transaction.category,
+      type: transaction.type,
+      date: new Date(transaction.date).toISOString().split('T')[0]
+    });
+    
+    const newTransaction = {
+      amount: transaction.amount,
+      description: transaction.description,
+      category: transaction.category,
+      date: new Date(transaction.date).toISOString().split('T')[0], // Format date as YYYY-MM-DD
+      type: transaction.type,
+    };
+    
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert([newTransaction])
+      .select();
+      
+    if (error) {
+      console.error('Supabase error adding transaction:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log('Transaction added successfully:', data);
+    return { success: true, data };
   } catch (error) {
-    console.error('Error adding transaction:', error);
-    return null;
+    console.error('Exception adding transaction:', error);
+    return { success: false, error: error.message };
   }
 };
 
 // Get all transactions
 export const getTransactions = async () => {
   try {
-    const transactions = await AsyncStorage.getItem(TRANSACTIONS_STORAGE_KEY);
-    if (transactions) {
-      return JSON.parse(transactions);
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false }); // Most recent first
+      
+    if (error) {
+      console.error('Error getting transactions:', error);
+      return [];
     }
-    // If no transactions found, initialize with sample data
-    return initializeTransactions();
+    
+    return data.map(transaction => ({
+      ...transaction,
+      date: new Date(transaction.date) // Convert string date to Date object
+    }));
   } catch (error) {
     console.error('Error getting transactions:', error);
     return [];
   }
 };
 
-// Delete a transaction
+// Delete a transaction - FIXED
 export const deleteTransaction = async (transactionId) => {
   try {
-    const transactions = await getTransactions();
-    const updatedTransactions = transactions.filter(transaction => transaction.id !== transactionId);
-    await AsyncStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(updatedTransactions));
-    return updatedTransactions;
+    if (!transactionId) {
+      console.error('Cannot delete: Transaction ID is missing or invalid');
+      return { success: false, error: 'Transaction ID is missing or invalid' };
+    }
+    
+    console.log('Attempting to delete transaction with ID:', transactionId);
+    
+    const { data, error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', transactionId)
+      .select();
+      
+    if (error) {
+      console.error('Supabase error deleting transaction:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log('Delete operation response:', data);
+    return { success: true, data };
   } catch (error) {
-    console.error('Error deleting transaction:', error);
-    return null;
+    console.error('Exception deleting transaction:', error);
+    return { success: false, error: error.message };
   }
 };
 
-// Custom hook to manage transactions state
-export const useTransactions = () => {
+// Update a transaction
+export const updateTransaction = async (transactionId, updatedData) => {
+  try {
+    // Format date if it exists in the updated data
+    const formattedData = { ...updatedData };
+    if (formattedData.date) {
+      formattedData.date = new Date(formattedData.date).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    }
+    
+    console.log('Updating transaction', transactionId, 'with data:', formattedData);
+    
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(formattedData)
+      .eq('id', transactionId)
+      .select();
+      
+    if (error) {
+      console.error('Error updating transaction:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log('Transaction updated successfully:', data);
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error updating transaction:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Custom hook for transactions data
+const useTransactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const loadTransactions = async () => {
-      try {
-        const data = await getTransactions();
+  const [summary, setSummary] = useState({
+    totalIncome: 0,
+    totalExpense: 0,
+    balance: 0
+  });
+  const [pieChartData, setPieChartData] = useState([]);
+  const [categoryChartData, setCategoryChartData] = useState([]);
+  
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      const data = await getTransactions();
+      
+      if (data) {
         setTransactions(data);
-      } catch (err) {
-        setError('Failed to load transactions');
-      } finally {
-        setLoading(false);
+        calculateSummary(data);
+        preparePieChartData(data);
+        prepareCategoryChartData(data);
       }
-    };
-
-    loadTransactions();
-  }, []);
-
-  // Calculate summary statistics
-  const summary = {
-    totalIncome: transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0),
-    totalExpense: transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0),
+    } catch (error) {
+      console.error('Error in fetchTransactions:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  summary.balance = summary.totalIncome - summary.totalExpense;
+  const calculateSummary = (data) => {
+    const totalIncome = data
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      
+    const totalExpense = data
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      
+    setSummary({
+      totalIncome,
+      totalExpense,
+      balance: totalIncome - totalExpense
+    });
+  };
 
-  // Get data for pie chart
-  const pieChartData = [
-    { name: 'Income', value: summary.totalIncome, color: '#4CAF50' },
-    { name: 'Expense', value: summary.totalExpense, color: '#F44336' },
-  ];
+  const preparePieChartData = (data) => {
+    const income = data
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      
+    const expenses = data
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      
+    setPieChartData([
+      { name: 'Income', value: income, color: '#4CAF50' },
+      { name: 'Expenses', value: expenses, color: '#F44336' }
+    ]);
+  };
 
-  // Get category breakdown for expenses
-  const expenseCategories = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((categories, t) => {
-      if (!categories[t.category]) {
-        categories[t.category] = 0;
-      }
-      categories[t.category] += t.amount;
-      return categories;
-    }, {});
+  const prepareCategoryChartData = (data) => {
+    // For expenses breakdown by category
+    const expensesByCategory = data
+      .filter(t => t.type === 'expense')
+      .reduce((acc, transaction) => {
+        const category = transaction.category;
+        if (!acc[category]) {
+          acc[category] = 0;
+        }
+        acc[category] += parseFloat(transaction.amount) || 0;
+        return acc;
+      }, {});
 
-  // Format category data for charts
-  const categoryChartData = Object.keys(expenseCategories).map((category, index) => ({
-    name: category,
-    value: expenseCategories[category],
-    color: getColorForCategory(category, index),
-  }));
+    // Convert to array format for pie chart
+    const categoryColors = {
+      seeds: '#FF9800',
+      fertilizer: '#4CAF50',
+      pesticides: '#F44336',
+      equipment: '#2196F3',
+      labor: '#9C27B0',
+      irrigation: '#00BCD4',
+      other: '#607D8B'
+    };
+    
+    const chartData = Object.keys(expensesByCategory).map(category => ({
+      name: category.charAt(0).toUpperCase() + category.slice(1).replace('_', ' '),
+      value: expensesByCategory[category],
+      color: categoryColors[category] || '#607D8B'
+    }));
+    
+    setCategoryChartData(chartData);
+  };
 
-  return { 
-    transactions, 
-    loading, 
-    error, 
+  const refresh = async () => {
+    return await fetchTransactions();
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  return {
+    transactions,
+    loading,
     summary,
     pieChartData,
     categoryChartData,
-    refresh: async () => {
-      setLoading(true);
-      const data = await getTransactions();
-      setTransactions(data);
-      setLoading(false);
-    },
-    addTransaction: async (transaction) => {
-      const updatedTransactions = await addTransaction(transaction);
-      if (updatedTransactions) {
-        setTransactions(updatedTransactions);
-      }
-      return updatedTransactions;
-    },
-    deleteTransaction: async (id) => {
-      const updatedTransactions = await deleteTransaction(id);
-      if (updatedTransactions) {
-        setTransactions(updatedTransactions);
-      }
-      return updatedTransactions;
-    }
+    refresh
   };
-};
-
-// Helper function to get colors for categories
-const getColorForCategory = (category, index) => {
-  const colors = {
-    seeds: '#8BC34A', // Light Green
-    fertilizer: '#009688', // Teal
-    pesticides: '#FF5722', // Deep Orange
-    equipment: '#3F51B5', // Indigo
-    labor: '#9C27B0', // Purple
-    irrigation: '#03A9F4', // Light Blue
-    crop_sale: '#4CAF50', // Green
-    subsidy: '#2196F3', // Blue
-    rental_income: '#FFEB3B', // Yellow
-    other: '#607D8B', // Blue Grey
-  };
-
-  return colors[category] || `hsl(${index * 40}, 70%, 50%)`; // Fallback color
 };
 
 export default useTransactions;

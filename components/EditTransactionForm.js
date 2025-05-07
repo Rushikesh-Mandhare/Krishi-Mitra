@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import tw from 'twrnc';
-import { useNavigation } from '@react-navigation/native';
-import { addTransaction } from '../data/transactionData'; 
-import Popup from './PopUp'; // Import the Popup component like in AddForm
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { updateTransaction } from '../data/transactionData';
 
-const ExpenseForm = () => {
+const EditTransactionForm = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+
+  // Get transaction data from route params
+  const { transaction } = route.params || {};
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     type: 'expense',
@@ -20,12 +23,23 @@ const ExpenseForm = () => {
   });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [popupVisible, setPopupVisible] = useState(false);
-  const [popupMessage, setPopupMessage] = useState('');
 
   // Categories for expenses and income
   const expenseCategories = ['seeds', 'fertilizer', 'pesticides', 'equipment', 'labor', 'irrigation', 'other'];
   const incomeCategories = ['crop_sale', 'subsidy', 'rental_income', 'other'];
+
+  // Populate form data when transaction is available
+  useEffect(() => {
+    if (transaction) {
+      setFormData({
+        type: transaction.type || 'expense',
+        amount: transaction.amount?.toString() || '',
+        category: transaction.category || 'seeds',
+        description: transaction.description || '',
+        date: transaction.date ? new Date(transaction.date) : new Date(),
+      });
+    }
+  }, [transaction]);
 
   const handleInputChange = (field, value) => {
     setFormData({
@@ -46,40 +60,44 @@ const ExpenseForm = () => {
   const handleSubmit = async () => {
     // Validate input
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      setPopupMessage('Please enter a valid amount');
-      setPopupVisible(true);
+      Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (!formData.description.trim()) {
-      setPopupMessage('Please enter a description');
-      setPopupVisible(true);
+      Alert.alert('Error', 'Please enter a description');
+      return;
+    }
+
+    if (!transaction?.id) {
+      Alert.alert('Error', 'Transaction ID is missing');
       return;
     }
     
     try {
       setLoading(true);
       
-      // Add transaction to Supabase
-      const result = await addTransaction({
-        ...formData,
-        amount: parseFloat(formData.amount),
-      });
+      // Update transaction in Supabase
+      const result = await updateTransaction(
+        transaction.id,
+        {
+          ...formData,
+          amount: parseFloat(formData.amount),
+        }
+      );
 
       if (result.success) {
         // Show success message and navigate back
-        setPopupMessage('Transaction added successfully!');
-        setPopupVisible(true);
-        // Navigation will happen after closing the popup
+        Alert.alert('Success', 'Transaction updated successfully!', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
       } else {
-        console.error('Transaction error details:', result.error);
-        setPopupMessage(`Failed to add transaction: ${result.error || 'Unknown error'}`);
-        setPopupVisible(true);
+        console.error('Transaction update error details:', result.error);
+        Alert.alert('Error', `Failed to update transaction: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Error submitting transaction:', error);
-      setPopupMessage('An unexpected error occurred. Please try again.');
-      setPopupVisible(true);
+      console.error('Error updating transaction:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +112,7 @@ const ExpenseForm = () => {
         >
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-        <Text style={tw`text-2xl font-bold ml-2`}>Add Transaction</Text>
+        <Text style={tw`text-2xl font-bold ml-2`}>Edit Transaction</Text>
       </View>
 
       {/* Transaction Type Selector */}
@@ -189,24 +207,11 @@ const ExpenseForm = () => {
         {loading ? (
           <ActivityIndicator color="white" size="small" />
         ) : (
-          <Text style={tw`text-white text-center text-lg font-bold`}>Save Transaction</Text>
+          <Text style={tw`text-white text-center text-lg font-bold`}>Update Transaction</Text>
         )}
       </TouchableOpacity>
-
-      {/* Popup for displaying messages */}
-      <Popup
-        visible={popupVisible}
-        message={popupMessage}
-        onClose={() => {
-          setPopupVisible(false);
-          // Navigate back if the transaction was successful
-          if (popupMessage === 'Transaction added successfully!') {
-            navigation.goBack();
-          }
-        }}
-      />
     </ScrollView>
   );
 };
 
-export default ExpenseForm;
+export default EditTransactionForm;
